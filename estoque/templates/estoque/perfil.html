@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="container mt-4">
+    <h2>Meu Perfil</h2>
+    <div class="card">
+        <div class="card-body">
+            <p><strong>Nome de usuário:</strong> {{ usuario.username }}</p>
+            <p><strong>Email:</strong> {{ usuario.email }}</p>
+            <p><strong>Último login:</strong> {{ usuario.last_login }}</p>
+            <a href="{% url 'editar_perfil' %}" class="btn btn-primary">Editar Perfil</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

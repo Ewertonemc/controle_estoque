@@ -1,0 +1,131 @@
+* {
+    margin: 0;
+    padding: 0;
+}
+
+.logo{
+    margin: 5px 0 5px 15px;
+}
+
+body {
+    background-color: #9ea3a7;
+}
+
+.navbar-brand {
+    font-weight: 600;
+    font-size: 1.2rem;
+}
+
+#menu{
+    margin-left: 15px;
+}
+
+.btn-sm{
+    margin: 2px;
+    padding: 5px 10px;
+}
+
+.img-thumbnail {
+    margin-right: 10px;
+    border-radius: 4px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    max-width: 70px; 
+    max-height: 70px;
+}
+
+.input-group {
+    max-width: 500px;
+}
+
+.bi-search {
+    font-size: 1rem;
+}
+
+
+.pagination {
+    margin-top: 20px;
+}
+
+.page-link {
+    color: #007bff;
+    border: 1px solid #dee2e6;
+}
+
+.page-item.active .page-link {
+    background-color: #007bff;
+    border-color: #007bff;
+}
+
+.jumbotron {
+    background: linear-gradient(135deg, #6B8DD6 0%, #8E37D7 100%);
+    color: white;
+    border-radius: 20px;
+    padding: 4rem 2rem;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+}
+
+.card {
+    transition: transform 0.3s;
+    border: none;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+.card:hover {
+    transform: translateY(-5px);
+}
+
+.ui-autocomplete {
+    position: absolute;
+    z-index: 1000;
+    cursor: default;
+    padding: 0;
+    margin-top: 2px;
+    list-style: none;
+    background-color: #ffffff;
+    border: 1px solid #ccc;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.ui-menu-item {
+    padding: 8px 12px;
+    border-bottom: 1px solid #eee;
+}
+
+.ui-menu-item:hover {
+    background-color: #f8f9fa;
+    cursor: pointer;
+}
+
+.ui-helper-hidden-accessible {
+    display: none;
+}
+
+
+th a {
+    text-decoration: none;
+    color: inherit;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.bi-sort-alpha-down, .bi-sort-alpha-up {
+    font-size: 0.8em;
+    color: #667;
+}
+
+.btn-danger {
+    margin-bottom: 10px;
+    transition: all 0.3s ease;
+}
+
+.btn-danger:hover {
+    transform: scale(1.05);
+    box-shadow: 0 0 15px rgba(220,53,69,0.5);
+}
+
+.modal-header {
+    background-color: #dc3545;
+    color: white;
+}

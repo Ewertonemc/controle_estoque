@@ -1,0 +1,60 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="container mt-4">
+    <!-- Mensagens do sistema -->
+    {% if messages %}
+    <div class="alert alert-info">
+        {% for message in messages %}
+            {{ message }}
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Formulário -->
+    <h2>Importar Produtos</h2>
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        <div class="mb-3">
+            {{ form.arquivo_excel.label_tag }}
+            {{ form.arquivo_excel }}
+        </div>
+        <div><small class="form-text text-muted">{{ form.arquivo_excel.help_text }}</small></div>
+        <button type="submit" class="btn btn-primary">Importar</button>
+        <a href="{% url 'lista_produtos' %}" class="btn btn-secondary">Cancelar</a>
+    </form>
+
+    <!-- Seção de Erros (condicional) -->
+    {% if errors %}
+    <div class="mt-5 alert alert-danger">
+        <h4>Erros na Importação ({{ errors|length }})</h4>
+        <div class="table-responsive">
+            <table class="table table-sm">
+                <thead>
+                    <tr>
+                        <th>Linha</th>
+                        <th>Erro</th>
+                        <th>Dados</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for error in errors %}
+                    <tr>
+                        <td>{{ error.linha }}</td>
+                        <td class="text-danger">{{ error.erro }}</td>
+                        <td>
+                            <pre>{{ error.dados }}</pre>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if success_count > 0 %}
+        <div class="mt-3 text-success">
+            ✅ {{ success_count }} produtos válidos foram importados
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

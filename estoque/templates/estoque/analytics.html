@@ -1,0 +1,134 @@
+{% extends 'base.html' %}
+{% load humanize %}
+{% block content %}
+<div class="container-fluid">
+    <!-- Filtros -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <select class="form-select" id="periodoSelect">
+                <option value="anual" {% if periodo_selecionado == 'anual' %}selected{% endif %}>Anual</option>
+                <option value="mensal" {% if periodo_selecionado == 'mensal' %}selected{% endif %}>Mensal</option>
+                <option value="quinzenal" {% if periodo_selecionado == 'quinzenal' %}selected{% endif %}>Quinzenal</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Cards Resumo -->
+    <div class="row row-cols-1 row-cols-md-3 g-4 mb-4">
+        <div class="col">
+            <div class="card text-white bg-primary h-100">
+                <div class="card-body">
+                    <h5 class="card-title">Estoque Total</h5>
+                    <p class="card-text display-4">{{ total_estoque|intcomma }}</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col">
+            <div class="card text-white bg-danger h-100">
+                <div class="card-body">
+                    <h5 class="card-title">Itens Críticos</h5>
+                    <p class="card-text display-4">{{ produtos_baixo_estoque.count }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Gráficos e Tabelas -->
+    <div class="row">
+        <!-- Rotatividade -->
+        <div class="col-md-6 mb-4">
+            <div class="card">
+                <div class="card-header bg-warning">
+                    <h5 class="card-title mb-0">Top 10 Itens Mais Movimentados</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Produto</th>
+                                    <th>Movimentações</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for produto in rotatividade|slice:":10" %}
+                                <tr>
+                                    <td>{{ produto.nome }}</td>
+                                    <td>{{ produto.total_movimentos }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Histórico de Compras -->
+        <div class="col-md-6 mb-4">
+            <div class="card">
+                <div class="card-header bg-success text-white">
+                    <h5 class="card-title mb-0">Fornecedores (Valor Total Comprado)</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Fornecedor</th>
+                                    <th>Total Gasto</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for fornecedor in historico_fornecedores %}
+                                <tr>
+                                    <td>{{ fornecedor.fornecedor__nome_empresa }}</td>
+                                    <td>R$ {{ fornecedor.total_compras|intcomma }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Adicione após o container -->
+<canvas id="movimentacaoChart"></canvas>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+const ctx = document.getElementById('movimentacaoChart').getContext('2d');
+new Chart(ctx, {
+    type: 'bar',
+    data: {
+        labels: {{ chart_labels|safe }},
+        datasets: [{
+            label: 'Movimentação por Período',
+            data: {{ chart_data }},
+            backgroundColor: 'rgba(54, 162, 235, 0.2)',
+            borderColor: 'rgba(54, 162, 235, 1)',
+            borderWidth: 1
+        }]
+    },
+    options: {
+        responsive: true,
+        scales: {
+            y: {
+                beginAtZero: true
+            }
+        }
+    }
+});
+</script>
+
+<script>
+// Controle do Filtro de Período
+document.getElementById('periodoSelect').addEventListener('change', function() {
+    window.location.search = '?periodo=' + this.value;
+});
+</script>
+{% endblock %}

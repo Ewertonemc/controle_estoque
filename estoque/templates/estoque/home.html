@@ -1,0 +1,44 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="container my-5">
+    <div class="jumbotron text-center">
+        <h1 class="display-4">Bem-vindo ao Sistema de Estoque</h1>
+        <h1 class="display-4">Naya Personalizados</h1>
+        <p class="lead">Controle completo de estoque, fornecedores e movimentações</p>
+        <hr class="my-4">
+        <p>Recursos principais:</p>
+        <div class="row">
+            <div class="col-md-4 mb-3">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">📦 Gestão de Produtos</h5>
+                        <p class="card-text">Cadastro, edição e controle de estoque</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 mb-3">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">🏢 Fornecedores</h5>
+                        <p class="card-text">Cadastro completo com CNPJ e histórico de compras</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 mb-3">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">📊 Relatórios</h5>
+                        <p class="card-text">Geração de relatórios analíticos e exportação para Excel</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% if user.is_authenticated %}
+            <a class="btn btn-primary btn-lg" href="{% url 'dashboard' %}" role="button">Acessar Dashboard</a>
+        {% else %}
+            <a class="btn btn-primary btn-lg" href="{% url 'login' %}" role="button">Login</a>
+            <a class="btn btn-success btn-lg" href="{% url 'admin:index' %}" role="button">Admin</a>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

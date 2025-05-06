@@ -1,0 +1,19 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="container mt-4">
+    <div class="alert alert-danger">
+        <h4 class="alert-heading">⚠️ Atenção!</h4>
+        <p>Você está prestes a excluir <strong>TODOS OS PRODUTOS</strong> do sistema.</p>
+        <hr>
+        <form method="post">
+            {% csrf_token %}
+            <div class="mb-3">
+                <label>Digite "SIM" para confirmar:</label>
+                <input type="text" name="confirmacao" class="form-control" required>
+            </div>
+            <button type="submit" class="btn btn-danger">Confirmar Exclusão Total</button>
+            <a href="{% url 'lista_produtos' %}" class="btn btn-secondary">Cancelar</a>
+        </form>
+    </div>
+</div>
+{% endblock %}
