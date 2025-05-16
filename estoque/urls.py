@@ -1,30 +1,56 @@
 from django.urls import path
-from . import views
 from django.conf import settings
 from django.conf.urls.static import static
+from . import views
 from .views import (
+    HomeView,
+    ProdutoListView,
+    ProdutoCreateView,
+    ProdutoUpdateView,
+    ProdutoDeleteView,
+    MovimentacaoCreateView,
+    AnalyticsView,
+    ImportarProdutosView,
     FornecedorListView,
     FornecedorCreateView,
     FornecedorUpdateView,
     FornecedorDeleteView,
     LogAtividadeListView,
-    excluir_todos_produtos
+    ExcluirTodosProdutosView,
+    PerfilUsuarioView,
+    EditarPerfilView
 )
 
 urlpatterns = [
+    # Autocomplete
     path('buscar-autocomplete/', views.buscar_autocomplete,
          name='buscar_autocomplete'),
-    path('', views.home, name='home'),
-    path('estoque/', views.lista_produtos, name='lista_produtos'),
-    path('novo/', views.novo_produto, name='novo_produto'),
-    path('movimentar/', views.nova_movimentacao, name='nova_movimentacao'),
-    path('analytics/', views.analytics, name='analytics'),
-    path('editar/<int:produto_id>/',
-         views.editar_produto, name='editar_produto'),
-    path('excluir/<int:produto_id>/',
-         views.excluir_produto, name='excluir_produto'),
-    path('importar/',
-         views.importar_produtos, name='importar_produtos'),
+
+    # Home
+    path('', HomeView.as_view(), name='home'),
+
+    # Produtos
+    path('estoque/', ProdutoListView.as_view(), name='lista_produtos'),
+    path('novo/', ProdutoCreateView.as_view(), name='novo_produto'),
+    path('editar/<int:pk>/', ProdutoUpdateView.as_view(),
+         name='editar_produto'),
+    path('excluir/<int:pk>/', ProdutoDeleteView.as_view(),
+         name='excluir_produto'),
+    path('produtos/excluir-todos/', ExcluirTodosProdutosView.as_view(),
+         name='excluir_todos_produtos'),
+
+    # Movimentações
+    path('movimentar/', MovimentacaoCreateView.as_view(),
+         name='nova_movimentacao'),
+
+    # Analytics
+    path('analytics/', AnalyticsView.as_view(), name='analytics'),
+
+    # Importação
+    path('importar/', ImportarProdutosView.as_view(),
+         name='importar_produtos'),
+
+    # Fornecedores
     path('fornecedores/', FornecedorListView.as_view(),
          name='lista_fornecedores'),
     path('fornecedores/novo/', FornecedorCreateView.as_view(),
@@ -33,11 +59,13 @@ urlpatterns = [
          FornecedorUpdateView.as_view(), name='editar_fornecedor'),
     path('fornecedores/excluir/<int:pk>/',
          FornecedorDeleteView.as_view(), name='excluir_fornecedor'),
+
+    # Logs
     path('logs/', LogAtividadeListView.as_view(), name='logs'),
-    path('perfil/', views.perfil_usuario, name='perfil'),
-    path('perfil/editar/', views.editar_perfil, name='editar_perfil'),
-    path('produtos/excluir-todos/', excluir_todos_produtos,
-         name='excluir_todos_produtos'),
+
+    # Perfil
+    path('perfil/', PerfilUsuarioView.as_view(), name='perfil'),
+    path('perfil/editar/', EditarPerfilView.as_view(), name='editar_perfil'),
 ]
 
 if settings.DEBUG:

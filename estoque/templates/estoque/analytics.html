@@ -84,7 +84,7 @@
                                 {% for fornecedor in historico_fornecedores %}
                                 <tr>
                                     <td>{{ fornecedor.fornecedor__nome_empresa }}</td>
-                                    <td>R$ {{ fornecedor.total_compras|intcomma }}</td>
+                                    <td>R$ {{ fornecedor.total_compras|floatformat:2|intcomma }}</td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
@@ -94,41 +94,63 @@
             </div>
         </div>
     </div>
-</div>
 
-<!-- Adicione após o container -->
-<canvas id="movimentacaoChart"></canvas>
+    <!-- Gráfico de Movimentação -->
+    <div class="row mt-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header bg-info text-white">
+                    <h5 class="card-title mb-0">Movimentação por Período</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="movimentacaoChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-const ctx = document.getElementById('movimentacaoChart').getContext('2d');
-new Chart(ctx, {
-    type: 'bar',
-    data: {
-        labels: {{ chart_labels|safe }},
-        datasets: [{
-            label: 'Movimentação por Período',
-            data: {{ chart_data }},
-            backgroundColor: 'rgba(54, 162, 235, 0.2)',
-            borderColor: 'rgba(54, 162, 235, 1)',
-            borderWidth: 1
-        }]
-    },
-    options: {
-        responsive: true,
-        scales: {
-            y: {
-                beginAtZero: true
+document.addEventListener('DOMContentLoaded', function() {
+    // Configuração do Gráfico
+    const ctx = document.getElementById('movimentacaoChart').getContext('2d');
+    new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: {{ chart_labels|safe }},
+            datasets: [{
+                label: 'Quantidade Movimentada',
+                data: {{ chart_data }},
+                backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                borderColor: 'rgba(54, 162, 235, 1)',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'Quantidade'
+                    }
+                },
+                x: {
+                    title: {
+                        display: true,
+                        text: 'Período'
+                    }
+                }
             }
         }
-    }
-});
-</script>
+    });
 
-<script>
-// Controle do Filtro de Período
-document.getElementById('periodoSelect').addEventListener('change', function() {
-    window.location.search = '?periodo=' + this.value;
+    // Controle do Filtro de Período
+    document.getElementById('periodoSelect').addEventListener('change', function() {
+        window.location.search = '?periodo=' + this.value;
+    });
 });
 </script>
 {% endblock %}

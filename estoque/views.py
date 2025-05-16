@@ -1,217 +1,310 @@
-import pandas as pd
-from unidecode import unidecode
-from django.shortcuts import render, redirect, get_object_or_404
-from django.http import HttpResponse
-from django.contrib.auth.decorators import login_required, user_passes_test
-from django.contrib.auth.mixins import LoginRequiredMixin
-from django.db import models
-from django.db.models import Sum, Count, F, DateField
-from .models import Produto, Movimentacao, Fornecedor, LogAtividade
-from .forms import ProdutoForm, MovimentacaoForm, EditarPerfilForm
+import logging
+from django.db import transaction
+from django.http import JsonResponse, HttpRequest, HttpResponse
+from django.shortcuts import render, redirect
 from django.contrib import messages
-from .forms import ImportarProdutosForm, FornecedorForm
-from django.views.generic import ListView, CreateView, UpdateView, DeleteView
-from django.urls import reverse, reverse_lazy
-from django.contrib.auth.models import User
+from django.contrib.auth.decorators import login_required
+from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
+from django.views import View
+from django.views.generic import (
+    ListView, CreateView, UpdateView, DeleteView, TemplateView
+)
+from django.urls import reverse_lazy
+from django.db.models import (
+    Q, F, Sum, Count, DateField
+)
 from django.db.models.functions import Trunc
+from unidecode import unidecode
+import pandas as pd
+
+from .models import Produto, Movimentacao, Fornecedor, LogAtividade
+from .forms import (
+    ProdutoForm, MovimentacaoForm, EditarPerfilForm,
+    ImportarProdutosForm, FornecedorForm
+)
+from .services import ImportadorProdutos
+
+logger = logging.getLogger(__name__)
+
+# Verifica tipo de usuário, para saber suas permissões
 
 
-def home(request):
-    return render(request, 'estoque/home.html')
+class SuperUserRequiredMixin(UserPassesTestMixin):
+    def test_func(self):
+        return self.request.user.is_superuser
+
+# Página inicial
 
 
-@login_required
-def lista_produtos(request):
-    search_query = request.GET.get('q', '')
-    sort_field = request.GET.get('sort', 'nome')
-    sort_direction = request.GET.get('dir', 'asc')
+class HomeView(View):
+    def get(self, request: HttpRequest) -> HttpResponse:
+        return render(request, 'estoque/home.html')
 
-    # Mapeamento seguro de campos para ordenação
-    valid_fields = {'nome', 'quantidade', 'valor_unitario', 'categoria'}
-    sort_field = sort_field if sort_field in valid_fields else 'nome'
+# Lista de Produtos
 
-    # Determina a direção da ordenação
-    ordering = sort_field if sort_direction == 'asc' else f'-{sort_field}'
 
-    produtos = Produto.objects.all().order_by(ordering)
+class ProdutoListView(LoginRequiredMixin, ListView):
+    model = Produto
+    template_name = 'estoque/lista.html'
+    context_object_name = 'produtos'
+    paginate_by = 20
+    ordering = 'nome'
 
-    # Mantém a busca
-    if search_query:
-        produtos = produtos.filter(
-            Q(nome__icontains=search_query) |
-            Q(categoria__icontains=search_query)
+    VALID_SORT_FIELDS = {'nome', 'quantidade', 'valor_unitario', 'categoria'}
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        search_query = self.request.GET.get('q', '')
+        sort_field = self.request.GET.get('sort', self.ordering)
+        sort_direction = self.request.GET.get('dir', 'asc')
+
+        # Filtro
+        if search_query:
+            queryset = queryset.filter(
+                Q(nome__icontains=search_query) |
+                Q(categoria__icontains=search_query)
+            )
+
+        # Ordenação
+        if sort_field in self.VALID_SORT_FIELDS:
+            if sort_direction == 'desc':
+                sort_field = f'-{sort_field}'
+            return queryset.order_by(sort_field)
+
+        return queryset
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context.update({
+            'search_query': self.request.GET.get('q', ''),
+            'current_sort': self.request.GET.get('sort', self.ordering),
+            'current_dir': self.request.GET.get('dir', 'asc')
+        })
+        return context
+
+# Novo Produto
+
+
+class ProdutoCreateView(LoginRequiredMixin, CreateView):
+    model = Produto
+    form_class = ProdutoForm
+    template_name = 'estoque/novo.html'
+    success_url = reverse_lazy('lista_produtos')
+
+    def form_valid(self, form):
+        form.instance.usuario = self.request.user
+        return super().form_valid(form)
+
+# Para editar os produtos
+
+
+class ProdutoUpdateView(LoginRequiredMixin, UpdateView):
+    model = Produto
+    form_class = ProdutoForm
+    template_name = 'estoque/editar_produtos.html'
+    success_url = reverse_lazy('lista_produtos')
+
+    def form_valid(self, form):
+        response = super().form_valid(form)
+        if self.object.quantidade <= self.object.quantidade_minima:
+            messages.warning(
+                self.request, "Este produto está abaixo do estoque mínimo!")
+        return response
+
+# Para exclusão dos produtos
+
+
+class ProdutoDeleteView(LoginRequiredMixin, DeleteView):
+    model = Produto
+    template_name = 'estoque/excluir_produtos.html'
+    success_url = reverse_lazy('lista_produtos')
+
+# Para fazer a movimentação dos produtos
+
+
+class MovimentacaoCreateView(LoginRequiredMixin, CreateView):
+    model = Movimentacao
+    form_class = MovimentacaoForm
+    template_name = 'estoque/movimentacao.html'
+    success_url = reverse_lazy('nova_movimentacao')
+
+    def form_valid(self, form):
+        form.instance.usuario = self.request.user
+        messages.success(
+            self.request,
+            f"Movimentação de {form.cleaned_data['quantidade']} \
+                unidades registrada!"
         )
+        return super().form_valid(form)
 
-    return render(request, 'estoque/lista.html', {
-        'produtos': produtos,
-        'search_query': search_query,
-        'current_sort': sort_field,
-        'current_dir': sort_direction
-    })
+# Importar produtos de uma planilha de excel
 
 
-@login_required
-def novo_produto(request):
-    if request.method == 'POST':
-        form = ProdutoForm(request.POST, request.FILES)
-        if form.is_valid():
-            form.save()
-            return redirect('lista_produtos')
-    else:
-        form = ProdutoForm()
-    return render(request, 'estoque/novo.html', {'form': form})
+class ImportarProdutosView(LoginRequiredMixin, View):
+    template_name = 'estoque/importar_produtos.html'
+    form_class = ImportarProdutosForm
 
+    def get(self, request: HttpRequest) -> HttpResponse:
+        return render(request, self.template_name, {'form': self.form_class()})
 
-@login_required
-def nova_movimentacao(request):
-    if request.method == 'POST':
-        form = MovimentacaoForm(request.POST)
-        if form.is_valid():
-            movimentacao = form.save()  # O signal será acionado aqui
+    @transaction.atomic
+    def post(self, request: HttpRequest) -> HttpResponse:
+        form = self.form_class(request.POST, request.FILES)
+        context = {'form': form}
 
-            # Verifica estoque mínimo após movimentação
-            if movimentacao.produto.quantidade <= movimentacao.produto.quantidade_minima:
-                messages.warning(
-                    request,
-                    f"Atenção! O produto {movimentacao.produto.nome} \
-                        está abaixo do estoque mínimo \
-                            ({movimentacao.produto.quantidade_minima})"
-                )
-
-            return redirect('nova_movimentacao')
-    else:
-        form = MovimentacaoForm()
-
-    return render(request, 'estoque/movimentacao.html', {'form': form})
-
-
-@login_required
-def editar_produto(request, produto_id):
-    produto = get_object_or_404(Produto, id=produto_id)
-
-    if request.method == 'POST':
-        form = ProdutoForm(request.POST, request.FILES, instance=produto)
-        if form.is_valid():
-            produto = form.save()
-            if produto.quantidade <= produto.quantidade_minima:
-                messages.warning(
-                    request, "Este produto está abaixo do estoque mínimo!")
-        return redirect('lista_produtos')
-    else:
-        form = ProdutoForm(instance=produto)
-    return render(request, 'estoque/editar_produtos.html', {'form': form})
-
-
-@login_required
-def excluir_produto(request, produto_id):
-    produto = get_object_or_404(Produto, id=produto_id)
-    if request.method == 'POST':
-        produto.delete()
-        return redirect('lista_produtos')
-    return render(request, 'estoque/excluir_produtos.html',
-                  {'produto': produto})
-
-
-@login_required
-def importar_produtos(request):
-    context = {'form': ImportarProdutosForm()}  # Inicializa o contexto
-    search_query = ""
-
-    if request.method == 'POST':
-        form = ImportarProdutosForm(request.POST, request.FILES)
-        context['form'] = form
+        if not form.is_valid():
+            return render(request, self.template_name, context)
 
         try:
-            if form.is_valid():
-                print("\n--- INICIANDO IMPORTAÇÃO ---")
-                df = pd.read_excel(request.FILES['arquivo_excel'])
-                print("Planilha recebida:", df.columns.tolist())
+            importador = ImportadorProdutos(request.FILES['arquivo_excel'])
+            result = importador.executar(request.user)
 
-                # Validação das colunas
-                required_columns = ['Nome', 'Quantidade',
-                                    'Valor Unitário', 'Categoria']
-                if not all(col in df.columns for col in required_columns):
-                    messages.error(request, "❌ Colunas obrigatórias ausentes!")
-                    return render(request, 'estoque/importar_produtos.html',
-                                  context)
-
-                # Processamento
-                success_count = 0
-                errors = []  # Sempre inicializa a lista de erros
-
-                for index, row in df.iterrows():
-                    try:
-                        # Validação básica
-                        if pd.isna(row['Nome']) or pd.isna(row['Quantidade']):
-                            raise ValueError("Campos obrigatórios em branco")
-
-                        # Cria o produto
-                        Produto.objects.create(
-                            nome=str(row['Nome']),
-                            quantidade=int(row['Quantidade']),
-                            quantidade_minima=int(
-                                row.get('Quantidade Mínima', 5)),
-                            valor_unitario=float(row['Valor Unitário']),
-                            categoria=str(row['Categoria'])
-                        )
-                        success_count += 1
-
-                    except Exception as e:
-                        errors.append({
-                            'linha': index + 2,
-                            'erro': str(e),
-                            'dados': dict(row)
-                        })
-                        print(f"Erro na linha {index+2}: {str(e)}")
-
-                # Resultados
-                if errors:
-                    context['errors'] = errors
-                    context['success_count'] = success_count
-                    print(
-                        f"Importação parcial: {success_count} sucessos, {len(errors)} erros")
-                else:
-                    messages.success(
-                        request,
-                        f"✅ {success_count} produtos importados com sucesso!")
-                    return redirect('lista_produtos')
-
-            if success_count > 0:
-                LogAtividade.objects.create(
-                    usuario=request.user,
-                    acao='I',
-                    modelo_afetado='Produto',
-                    detalhes=f"Importados {success_count} produtos"
+            if result['errors']:
+                context.update({
+                    'errors': result['errors'],
+                    'success_count': result['success_count']
+                })
+                messages.warning(
+                    request,
+                    f"Importação parcial: {result['success_count']} sucessos, "
+                    f"{len(result['errors'])} erros"
                 )
+            else:
+                messages.success(
+                    request,
+                    f"✅ {result['success_count']} \
+                        produtos importados com sucesso!"
+                )
+                return redirect('lista_produtos')
 
         except Exception as e:
-            print("ERRO GRAVE:", str(e))
+            logger.error(f"Erro na importação: {str(e)}", exc_info=True)
             messages.error(request, f"❌ Erro crítico: {str(e)}")
-            return redirect('importar_produtos')
 
-    return render(request, 'estoque/importar_produtos.html', context)
+        return render(request, self.template_name, context)
+
+# Para relatórios
+
+
+class AnalyticsView(LoginRequiredMixin, TemplateView):
+    template_name = 'estoque/analytics.html'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        periodo = self.request.GET.get('periodo', 'mensal')
+
+        # Dados Gerais
+        context['total_estoque'] = Produto.objects.aggregate(
+            total=Sum('quantidade'))['total'] or 0
+        context['produtos_baixo_estoque'] = Produto.objects.filter(
+            quantidade__lte=F('quantidade_minima'))
+
+        # Rotatividade corrigida
+        context['rotatividade'] = Produto.objects.annotate(
+            total_movimentos=Count('movimentacoes')
+        ).order_by('-total_movimentos')
+
+        # Definir a função de truncagem corretamente
+        trunc_kwargs = {
+            'anual': ('year', 'Ano'),
+            'mensal': ('month', 'Mês'),
+            'quinzenal': ('day', 'Dia')
+        }.get(periodo, ('month', 'Mês'))
+
+        # Histórico por Período
+        movimentacoes = Movimentacao.objects.annotate(
+            periodo=Trunc('data', trunc_kwargs[0], output_field=DateField())
+        ).values('periodo').annotate(
+            total=Sum('quantidade'),
+            valor_total=Sum(F('quantidade') * F('preco_unitario'))
+        ).order_by('periodo')
+
+        # Preparar dados para o gráfico
+        context['chart_labels'] = [m['periodo'].strftime(
+            '%Y-%m-%d') for m in movimentacoes]
+        context['chart_data'] = [m['total'] for m in movimentacoes]
+
+        # Histórico de Compras
+        context['historico_fornecedores'] = Movimentacao.objects.filter(
+            tipo=Movimentacao.TipoMovimentacao.ENTRADA
+        ).values('fornecedor__nome_empresa').annotate(
+            total_compras=Sum(F('quantidade') * F('preco_unitario'))
+        ).order_by('-total_compras')
+
+        context['periodo_selecionado'] = periodo
+
+        return context
+
+# Exclusão de todos os produtos
+
+
+class ExcluirTodosProdutosView(SuperUserRequiredMixin, View):
+    template_name = 'estoque/confirmar_exclusao_total.html'
+
+    def post(self, request: HttpRequest) -> HttpResponse:
+        if request.POST.get('confirmacao') == 'SIM':
+            Produto.objects.all().delete()
+            messages.success(request, "Todos os produtos foram excluídos!")
+            return redirect('lista_produtos')
+
+        messages.error(request, "Confirmação inválida")
+        return redirect('home')
+
+# Lista de fornecedores
+
+
+class FornecedorListView(LoginRequiredMixin, ListView):
+    model = Fornecedor
+    template_name = 'estoque/lista_fornecedores.html'
+    context_object_name = 'fornecedores'
+
+# Cadastro de fornecedores
+
+
+class FornecedorCreateView(LoginRequiredMixin, CreateView):
+    model = Fornecedor
+    form_class = FornecedorForm
+    template_name = 'estoque/editar_fornecedor.html'
+    success_url = reverse_lazy('lista_fornecedores')
+
+# Atualizar fornecedores
+
+
+class FornecedorUpdateView(LoginRequiredMixin, UpdateView):
+    model = Fornecedor
+    form_class = FornecedorForm
+    template_name = 'estoque/editar_fornecedor.html'
+    success_url = reverse_lazy('lista_fornecedores')
+
+# Deletar Fornecedores
+
+
+class FornecedorDeleteView(LoginRequiredMixin, DeleteView):
+    model = Fornecedor
+    template_name = 'estoque/confirmar_exclusao_fornecedor.html'
+    success_url = reverse_lazy('lista_fornecedores')
+
+# Perfil de usuários
+
+
+class PerfilUsuarioView(LoginRequiredMixin, View):
+    def get(self, request: HttpRequest) -> HttpResponse:
+        return render(request, 'estoque/perfil.html', {'usuario': request.user})
+
+# Editar perfil dos usuários
+
+
+class EditarPerfilView(LoginRequiredMixin, UpdateView):
+    form_class = EditarPerfilForm
+    template_name = 'estoque/editar_perfil.html'
+    success_url = reverse_lazy('perfil')
+
+    def get_object(self):
+        return self.request.user
 
 
 @login_required
-def perfil_usuario(request):
-    usuario = request.user
-    return render(request, 'estoque/perfil.html', {'usuario': usuario})
-
-
-@login_required
-def editar_perfil(request):
-    if request.method == 'POST':
-        form = EditarPerfilForm(request.POST, instance=request.user)
-        if form.is_valid():
-            form.save()
-            return redirect('perfil')
-    else:
-        form = EditarPerfilForm(instance=request.user)
-
-    return render(request, 'estoque/editar_perfil.html', {'form': form})
-
-
-def buscar_autocomplete(request):
+def buscar_autocomplete(request: HttpRequest) -> JsonResponse:
     termo = request.GET.get('term', '')
     termo_normalizado = unidecode(termo).lower()
 
@@ -221,108 +314,19 @@ def buscar_autocomplete(request):
 
     return JsonResponse(list(produtos), safe=False)
 
-
-@login_required
-def analytics(request):
-    periodo = request.GET.get('periodo', 'mensal')
-
-    # Dados Gerais
-    total_estoque = Produto.objects.aggregate(
-        total=Sum('quantidade'))['total'] or 0
-    produtos_baixo_estoque = Produto.objects.filter(
-        quantidade__lte=F('quantidade_minima'))
-
-    # Rotatividade
-    rotatividade = Produto.objects.annotate(
-        total_movimentos=Count('movimentacao')
-    ).order_by('-total_movimentos')
-
-    # Histórico por Período
-    date_trunc = {
-        'anual': Trunc('data', 'year'),
-        'mensal': Trunc('data', 'month'),
-        'quinzenal': Trunc('data', 'day')
-    }.get(periodo, Trunc('data', 'month'))
-
-    movimentacoes = Movimentacao.objects.annotate(
-        periodo=date_trunc
-    ).values('periodo', 'produto__nome').annotate(
-        total=Sum('quantidade'),
-        valor_total=Sum(F('quantidade') * F('preco_unitario'))
-    )
-
-    # Histórico de Compras
-    historico_fornecedores = Movimentacao.objects.filter(
-        tipo='entrada').values('fornecedor__nome_empresa').annotate(
-        total_compras=Sum(F('quantidade') * F('preco_unitario'))
-    ).order_by('-total_compras')
-
-    return render(request, 'estoque/analytics.html', {
-        'total_estoque': total_estoque,
-        'produtos_baixo_estoque': produtos_baixo_estoque,
-        'rotatividade': rotatividade,
-        'movimentacoes': movimentacoes,
-        'historico_fornecedores': historico_fornecedores,
-        'periodo_selecionado': periodo
-    })
-
-
-@login_required
-@user_passes_test(lambda u: u.is_superuser)  # Restringe a superusuários
-def excluir_todos_produtos(request):
-    if request.method == 'POST':
-        try:
-            # Confirmação adicional
-            confirmacao = request.POST.get('confirmacao', '') == 'SIM'
-            if confirmacao:
-                Produto.objects.all().delete()
-                messages.success(
-                    request, "Todos os produtos foram excluídos com sucesso!")
-                return redirect('lista_produtos')
-            else:
-                messages.error(request, "Confirmação inválida")
-        except Exception as e:
-            messages.error(request, f"Erro ao excluir produtos: {str(e)}")
-
-    return render(request, 'estoque/confirmar_exclusao_total.html')
-
-
-class FornecedorListView(LoginRequiredMixin, ListView):
-    model = Fornecedor
-    template_name = 'estoque/lista_fornecedores.html'
-    context_object_name = 'fornecedores'
-
-
-class FornecedorCreateView(LoginRequiredMixin, CreateView):
-    model = Fornecedor
-    form_class = FornecedorForm
-    template_name = 'estoque/editar_fornecedor.html'
-    success_url = reverse_lazy('lista_fornecedores')
-
-
-class FornecedorUpdateView(LoginRequiredMixin, UpdateView):
-    model = Fornecedor
-    form_class = FornecedorForm
-    template_name = 'estoque/editar_fornecedor.html'
-    success_url = reverse_lazy('lista_fornecedores')
-
-
-class FornecedorDeleteView(LoginRequiredMixin, DeleteView):
-    model = Fornecedor
-    template_name = 'estoque/confirmar_exclusao_fornecedor.html'
-    success_url = reverse_lazy('lista_fornecedores')
+# Lista com as ações ocorridas, por usuários
 
 
 class LogAtividadeListView(LoginRequiredMixin, ListView):
     model = LogAtividade
     template_name = 'estoque/logs.html'
     context_object_name = 'logs'
-    paginate_by = 20
+    paginate_by = 50
 
     def get_queryset(self):
         return LogAtividade.objects.select_related('usuario').order_by('-data_hora')
 
-    def dispatch(self, request, *args, **kwargs):
+    def dispatch(self, request: HttpRequest, *args, **kwargs) -> HttpResponse:
         if not request.user.is_staff:
             return self.handle_no_permission()
         return super().dispatch(request, *args, **kwargs)

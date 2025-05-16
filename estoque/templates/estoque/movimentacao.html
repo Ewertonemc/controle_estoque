@@ -11,18 +11,41 @@
         <div class="mb-3">
             {{ form.produto.label_tag }}
             {{ form.produto }}
+            <small class="form-text text-muted">Selecione o produto</small>
         </div>
-
+    
         <div class="mb-3">
             {{ form.tipo.label_tag }}
-            {{ form.tipo }}
+            <div class="form-check">
+                {% for choice in form.tipo %}
+                    {{ choice.tag }}
+                    <label class="form-check-label" for="{{ choice.id_for_label }}">
+                        {{ choice.choice_label }}
+                    </label>
+                {% endfor %}
+            </div>
         </div>
-
+    
         <div class="mb-3">
             {{ form.quantidade.label_tag }}
             {{ form.quantidade }}
+            <small class="form-text text-muted">Quantidade a movimentar</small>
+        </div>
+    
+        <div class="mb-3">
+            {{ form.preco_unitario.label_tag }}
+            {{ form.preco_unitario }}
+            <small class="form-text text-muted">Preço unitário atual</small>
         </div>
 
-        <button type="submit" class="btn btn-primary">Registrar</button>
+        <div class="mb-3">
+            {{ form.fornecedor.label_tag }}
+            {{ form.fornecedor }}
+            <small class="form-text text-muted">Selecione o fornecedor</small>
+        </div>
+    
+        <button type="submit" class="btn btn-primary">
+            <i class="bi bi-save"></i> Salvar Movimentação
+        </button>
     </form>
 {% endblock %}
