@@ -34,7 +34,7 @@
             </div>
         </div>
         {% if user.is_authenticated %}
-            <a class="btn btn-primary btn-lg" href="{% url 'dashboard' %}" role="button">Acessar Dashboard</a>
+            <a class="btn btn-primary btn-lg" href="{% url 'analytics' %}" role="button">Acessar Relatórios</a>
         {% else %}
             <a class="btn btn-primary btn-lg" href="{% url 'login' %}" role="button">Login</a>
             <a class="btn btn-success btn-lg" href="{% url 'admin:index' %}" role="button">Admin</a>
